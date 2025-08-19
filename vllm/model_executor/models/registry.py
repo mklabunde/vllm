@@ -4,6 +4,7 @@
 Whenever you add an architecture to this page, please also update
 `tests/models/registry.py` with example HuggingFace models for it.
 """
+
 import importlib
 import os
 import pickle
@@ -19,16 +20,23 @@ from typing import Callable, Optional, TypeVar, Union
 import torch.nn as nn
 import transformers
 
-from vllm.config import (ModelConfig, ModelImpl, iter_architecture_defaults,
-                         try_match_architecture_defaults)
+from vllm.config import ModelConfig, ModelImpl, iter_architecture_defaults, try_match_architecture_defaults
 from vllm.logger import init_logger
-from vllm.transformers_utils.dynamic_module import (
-    try_get_class_from_dynamic_module)
+from vllm.transformers_utils.dynamic_module import try_get_class_from_dynamic_module
 
-from .interfaces import (get_default_pooling_type, has_inner_state, has_noops,
-                         is_attention_free, is_hybrid, supports_cross_encoding,
-                         supports_multimodal, supports_multimodal_raw_input,
-                         supports_pp, supports_transcription, supports_v0_only)
+from .interfaces import (
+    get_default_pooling_type,
+    has_inner_state,
+    has_noops,
+    is_attention_free,
+    is_hybrid,
+    supports_cross_encoding,
+    supports_multimodal,
+    supports_multimodal_raw_input,
+    supports_pp,
+    supports_transcription,
+    supports_v0_only,
+)
 from .interfaces_base import is_pooling_model, is_text_generation_model
 
 logger = init_logger(__name__)
@@ -125,6 +133,7 @@ _TEXT_GENERATION_MODELS = {
     "Plamo2ForCausalLM": ("plamo2", "Plamo2ForCausalLM"),
     "QWenLMHeadModel": ("qwen", "QWenLMHeadModel"),
     "Qwen2ForCausalLM": ("qwen2", "Qwen2ForCausalLM"),
+    "StitchedQwen2ForCausalLM": ("qwen2_stitched", "StitchedQwen2ForCausalLM"),
     "Qwen2MoeForCausalLM": ("qwen2_moe", "Qwen2MoeForCausalLM"),
     "Qwen3ForCausalLM": ("qwen3", "Qwen3ForCausalLM"),
     "Qwen3MoeForCausalLM": ("qwen3_moe", "Qwen3MoeForCausalLM"),
@@ -298,9 +307,7 @@ _VLLM_MODELS = {
 # can modify  this variable to alter the args if needed. e.g.
 # when we use par format to pack things together, sys.executable
 # might not be the target we want to run.
-_SUBPROCESS_COMMAND = [
-    sys.executable, "-m", "vllm.model_executor.models.registry"
-]
+_SUBPROCESS_COMMAND = [sys.executable, "-m", "vllm.model_executor.models.registry"]
 
 _PREVIOUSLY_SUPPORTED_MODELS = {"Phi3SmallForCausalLM": "0.9.2"}
 
@@ -338,15 +345,13 @@ class _ModelInfo:
             is_attention_free=is_attention_free(model),
             is_hybrid=is_hybrid(model),
             supports_transcription=supports_transcription(model),
-            supports_transcription_only=(supports_transcription(model) and
-                                         model.supports_transcription_only),
+            supports_transcription_only=(supports_transcription(model) and model.supports_transcription_only),
             supports_v0_only=supports_v0_only(model),
             has_noops=has_noops(model),
         )
 
 
 class _BaseRegisteredModel(ABC):
-
     @abstractmethod
     def inspect_model_cls(self) -> _ModelInfo:
         raise NotImplementedError
@@ -384,13 +389,13 @@ class _LazyRegisteredModel(_BaseRegisteredModel):
     """
     Represents a model that has not been imported in the main process.
     """
+
     module_name: str
     class_name: str
 
     # Performed in another process to avoid initializing CUDA
     def inspect_model_cls(self) -> _ModelInfo:
-        return _run_in_subprocess(
-            lambda: _ModelInfo.from_model_cls(self.load_model_cls()))
+        return _run_in_subprocess(lambda: _ModelInfo.from_model_cls(self.load_model_cls()))
 
     def load_model_cls(self) -> type[nn.Module]:
         mod = importlib.import_module(self.module_name)
@@ -403,12 +408,12 @@ def _try_load_model_cls(
     model: _BaseRegisteredModel,
 ) -> Optional[type[nn.Module]]:
     from vllm.platforms import current_platform
+
     current_platform.verify_model_arch(model_arch)
     try:
         return model.load_model_cls()
     except Exception:
-        logger.exception("Error in loading model architecture '%s'",
-                         model_arch)
+        logger.exception("Error in loading model architecture '%s'", model_arch)
         return None
 
 
@@ -420,8 +425,7 @@ def _try_inspect_model_cls(
     try:
         return model.inspect_model_cls()
     except Exception:
-        logger.exception("Error in inspecting model architecture '%s'",
-                         model_arch)
+        logger.exception("Error in inspecting model architecture '%s'", model_arch)
         return None
 
 
@@ -455,9 +459,10 @@ class _ModelRegistry:
 
         if model_arch in self.models:
             logger.warning(
-                "Model architecture %s is already registered, and will be "
-                "overwritten by the new model class %s.", model_arch,
-                model_cls)
+                "Model architecture %s is already registered, and will be overwritten by the new model class %s.",
+                model_arch,
+                model_cls,
+            )
 
         if isinstance(model_cls, str):
             split_str = model_cls.split(":")
@@ -469,8 +474,7 @@ class _ModelRegistry:
         elif isinstance(model_cls, type) and issubclass(model_cls, nn.Module):
             model = _RegisteredModel.from_model_cls(model_cls)
         else:
-            msg = ("`model_cls` should be a string or PyTorch model class, "
-                   f"not a {type(model_arch)}")
+            msg = f"`model_cls` should be a string or PyTorch model class, not a {type(model_arch)}"
             raise TypeError(msg)
 
         self.models[model_arch] = model
@@ -480,8 +484,8 @@ class _ModelRegistry:
 
         if any(arch in all_supported_archs for arch in architectures):
             raise ValueError(
-                f"Model architectures {architectures} failed "
-                "to be inspected. Please check the logs for more details.")
+                f"Model architectures {architectures} failed to be inspected. Please check the logs for more details."
+            )
 
         for arch in architectures:
             if arch in _PREVIOUSLY_SUPPORTED_MODELS:
@@ -491,14 +495,15 @@ class _ModelRegistry:
                     f"Model architecture {arch} was supported in vLLM until "
                     f"v{previous_version}, and is not supported anymore. "
                     "Please use an older version of vLLM if you want to "
-                    "use this model architecture.")
+                    "use this model architecture."
+                )
 
         raise ValueError(
             f"Model architectures {architectures} are not supported for now. "
-            f"Supported architectures: {all_supported_archs}")
+            f"Supported architectures: {all_supported_archs}"
+        )
 
-    def _try_load_model_cls(self,
-                            model_arch: str) -> Optional[type[nn.Module]]:
+    def _try_load_model_cls(self, model_arch: str) -> Optional[type[nn.Module]]:
         if model_arch not in self.models:
             return None
 
@@ -518,8 +523,7 @@ class _ModelRegistry:
         if architecture in _TRANSFORMERS_BACKEND_MODELS:
             return architecture
 
-        auto_map: dict[str, str] = getattr(model_config.hf_config, "auto_map",
-                                           None) or dict()
+        auto_map: dict[str, str] = getattr(model_config.hf_config, "auto_map", None) or dict()
 
         # Make sure that config class is always initialized before model class,
         # otherwise the model class won't be able to access the config class,
@@ -561,15 +565,14 @@ class _ModelRegistry:
                     "registered model in the Transformers library (only "
                     "relevant if the model is meant to be in Transformers) "
                     "and 'AutoModel' is not present in the model config's "
-                    "'auto_map' (relevant if the model is custom).")
+                    "'auto_map' (relevant if the model is custom)."
+                )
 
         if not model_module.is_backend_compatible():
             if model_config.model_impl != ModelImpl.TRANSFORMERS:
                 return None
 
-            raise ValueError(
-                f"The Transformers implementation of {architecture!r} "
-                "is not compatible with vLLM.")
+            raise ValueError(f"The Transformers implementation of {architecture!r} is not compatible with vLLM.")
 
         return model_config._get_transformers_backend_cls()
 
@@ -611,19 +614,19 @@ class _ModelRegistry:
 
         # Require transformers impl
         if model_config.model_impl == ModelImpl.TRANSFORMERS:
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_info = self._try_inspect_model_cls(arch)
                 if model_info is not None:
                     return (model_info, arch)
 
         # Fallback to transformers impl (after resolving convert_type)
-        if (all(arch not in self.models for arch in architectures)
-                and model_config.model_impl == ModelImpl.AUTO
-                and getattr(model_config, "convert_type", "none") == "none"):
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+        if (
+            all(arch not in self.models for arch in architectures)
+            and model_config.model_impl == ModelImpl.AUTO
+            and getattr(model_config, "convert_type", "none") == "none"
+        ):
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_info = self._try_inspect_model_cls(arch)
                 if model_info is not None:
@@ -636,10 +639,8 @@ class _ModelRegistry:
                 return (model_info, arch)
 
         # Fallback to transformers impl (before resolving runner_type)
-        if (all(arch not in self.models for arch in architectures)
-                and model_config.model_impl == ModelImpl.AUTO):
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+        if all(arch not in self.models for arch in architectures) and model_config.model_impl == ModelImpl.AUTO:
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_info = self._try_inspect_model_cls(arch)
                 if model_info is not None:
@@ -659,19 +660,19 @@ class _ModelRegistry:
 
         # Require transformers impl
         if model_config.model_impl == ModelImpl.TRANSFORMERS:
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_cls = self._try_load_model_cls(arch)
                 if model_cls is not None:
                     return (model_cls, arch)
 
         # Fallback to transformers impl (after resolving convert_type)
-        if (all(arch not in self.models for arch in architectures)
-                and model_config.model_impl == ModelImpl.AUTO
-                and getattr(model_config, "convert_type", "none") == "none"):
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+        if (
+            all(arch not in self.models for arch in architectures)
+            and model_config.model_impl == ModelImpl.AUTO
+            and getattr(model_config, "convert_type", "none") == "none"
+        ):
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_cls = self._try_load_model_cls(arch)
                 if model_cls is not None:
@@ -684,10 +685,8 @@ class _ModelRegistry:
                 return (model_cls, arch)
 
         # Fallback to transformers impl (before resolving runner_type)
-        if (all(arch not in self.models for arch in architectures)
-                and model_config.model_impl == ModelImpl.AUTO):
-            arch = self._try_resolve_transformers(architectures[0],
-                                                  model_config)
+        if all(arch not in self.models for arch in architectures) and model_config.model_impl == ModelImpl.AUTO:
+            arch = self._try_resolve_transformers(architectures[0], model_config)
             if arch is not None:
                 model_cls = self._try_load_model_cls(arch)
                 if model_cls is not None:
@@ -800,14 +799,15 @@ class _ModelRegistry:
         return not model_cls.supports_v0_only
 
 
-ModelRegistry = _ModelRegistry({
-    model_arch:
-    _LazyRegisteredModel(
-        module_name=f"vllm.model_executor.models.{mod_relname}",
-        class_name=cls_name,
-    )
-    for model_arch, (mod_relname, cls_name) in _VLLM_MODELS.items()
-})
+ModelRegistry = _ModelRegistry(
+    {
+        model_arch: _LazyRegisteredModel(
+            module_name=f"vllm.model_executor.models.{mod_relname}",
+            class_name=cls_name,
+        )
+        for model_arch, (mod_relname, cls_name) in _VLLM_MODELS.items()
+    }
+)
 
 _T = TypeVar("_T")
 
@@ -820,21 +820,19 @@ def _run_in_subprocess(fn: Callable[[], _T]) -> _T:
 
         # `cloudpickle` allows pickling lambda functions directly
         import cloudpickle
+
         input_bytes = cloudpickle.dumps((fn, output_filepath))
 
         # cannot use `sys.executable __file__` here because the script
         # contains relative imports
-        returned = subprocess.run(_SUBPROCESS_COMMAND,
-                                  input=input_bytes,
-                                  capture_output=True)
+        returned = subprocess.run(_SUBPROCESS_COMMAND, input=input_bytes, capture_output=True)
 
         # check if the subprocess is successful
         try:
             returned.check_returncode()
         except Exception as e:
             # wrap raised exception to provide more information
-            raise RuntimeError(f"Error raised in subprocess:\n"
-                               f"{returned.stderr.decode()}") from e
+            raise RuntimeError(f"Error raised in subprocess:\n{returned.stderr.decode()}") from e
 
         with open(output_filepath, "rb") as f:
             return pickle.load(f)
@@ -843,6 +841,7 @@ def _run_in_subprocess(fn: Callable[[], _T]) -> _T:
 def _run() -> None:
     # Setup plugins
     from vllm.plugins import load_general_plugins
+
     load_general_plugins()
 
     fn, output_file = pickle.loads(sys.stdin.buffer.read())
